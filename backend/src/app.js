@@ -20,7 +20,20 @@ app.use(
 // 🔥 IMPORTANT: explicitly handle OPTIONS
 app.options("*", cors());
 
-app.use(express.json());
+ app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://ainutriplanner.netlify.app"
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+// IMPORTANT: handle preflight
+app.options("*", cors());
+
 
 app.use("/api/auth", authRoutes);
 app.use("/api/diet", dietRoutes);
