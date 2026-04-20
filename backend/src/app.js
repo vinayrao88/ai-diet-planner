@@ -1,4 +1,4 @@
- import express from "express";
+import express from "express";
 import cors from "cors";
 import authRoutes from "./routes/authRoutes.js";
 import dietRoutes from "./routes/dietRoutes.js";
@@ -8,32 +8,18 @@ import progressRoutes from "./routes/progressRoutes.js";
 
 const app = express();
 
-// 🔥 FINAL CORS FIX (Authorization header allowed)
 app.use(
-  cors({
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
-
-// 🔥 IMPORTANT: explicitly handle OPTIONS
-app.options("*", cors());
-
- app.use(
   cors({
     origin: [
       "http://localhost:5173",
-      "https://ainutriplanner.netlify.app"
+      "https://ainutriplanner.netlify.app",
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-
-// IMPORTANT: handle preflight
 app.options("*", cors());
-
+app.use(express.json());
 
 app.use("/api/auth", authRoutes);
 app.use("/api/diet", dietRoutes);
@@ -42,7 +28,11 @@ app.use("/api/meals", mealLogRoutes);
 app.use("/api/progress", progressRoutes);
 
 app.get("/", (req, res) => {
-  res.send("Backend running successfully 🚀");
+  res.send("Backend running successfully");
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true });
 });
 
 export default app;

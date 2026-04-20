@@ -1,10 +1,7 @@
- import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 
-/* =========================
-   Macro Ring Component
-========================= */
 function Ring({ value, total, label, color }) {
   const percent = total ? Math.round((value / total) * 100) : 0;
   const r = 42;
@@ -15,14 +12,7 @@ function Ring({ value, total, label, color }) {
   return (
     <div className="flex flex-col items-center">
       <svg width="110" height="110">
-        <circle
-          cx="55"
-          cy="55"
-          r={r}
-          stroke="#e5e7eb"
-          strokeWidth={stroke}
-          fill="none"
-        />
+        <circle cx="55" cy="55" r={r} stroke="#e5e7eb" strokeWidth={stroke} fill="none" />
         <circle
           cx="55"
           cy="55"
@@ -35,118 +25,118 @@ function Ring({ value, total, label, color }) {
           strokeLinecap="round"
         />
       </svg>
-      <p className="text-lg font-bold mt-1">{percent}%</p>
+      <p className="mt-1 text-lg font-bold">{percent}%</p>
       <p className="text-sm text-gray-500">{label}</p>
     </div>
   );
 }
 
-/* =========================
-   Dashboard Page
-========================= */
 export default function Dashboard() {
   const navigate = useNavigate();
-
   const [diet, setDiet] = useState(null);
   const [mealLogs, setMealLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  /* ---------- Load Data ---------- */
   useEffect(() => {
-    api.get("/diet/current").then(res => setDiet(res.data));
-    api.get("/meals/today").then(res => setMealLogs(res.data));
+    const loadData = async () => {
+      try {
+        const [dietRes, mealsRes] = await Promise.all([
+          api.get("/diet/current"),
+          api.get("/meals/today"),
+        ]);
+        setDiet(dietRes.data || null);
+        setMealLogs(mealsRes.data || []);
+      } catch (err) {
+        setError(err.response?.data?.message || "Failed to load dashboard data");
+      }
+    };
+
+    loadData();
   }, []);
 
-  /* ---------- Generate Diet ---------- */
   const generateDiet = async () => {
-    setLoading(true);
-    await api.post("/diet/generate");
-    const res = await api.get("/diet/current");
-    setDiet(res.data);
-    setLoading(false);
+    try {
+      setLoading(true);
+      setError("");
+      await api.post("/diet/generate");
+      const res = await api.get("/diet/current");
+      setDiet(res.data || null);
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to generate diet plan");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  /* ---------- Meal Helpers ---------- */
-  const getMealStatus = meal =>
-    mealLogs.find(m => m.mealType === meal)?.eaten;
-   const toggleMeal = async (meal, eaten) => {
-  // Optimistic UI update
-  setMealLogs(prev => {
-    const filtered = prev.filter(m => m.mealType !== meal);
-    return [...filtered, { mealType: meal, eaten }];
-  });
+  const getMealStatus = (meal) => mealLogs.find((m) => m.mealType === meal)?.eaten;
 
-  // Backend sync
-  await api.post("/meals/toggle", { mealType: meal, eaten });
-};
+  const toggleMeal = async (meal, eaten) => {
+    setMealLogs((prev) => {
+      const filtered = prev.filter((m) => m.mealType !== meal);
+      return [...filtered, { mealType: meal, eaten }];
+    });
 
-   /* ---------- Dynamic Nutrition (REAL) ---------- */
+    try {
+      await api.post("/meals/toggle", { mealType: meal, eaten });
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to update meal status");
+    }
+  };
 
-let consumedCalories = 0;
-let consumedProtein = 0;
-let consumedCarbs = 0;
-let consumedFats = 0;
+  let consumedProtein = 0;
+  let consumedCarbs = 0;
+  let consumedFats = 0;
 
-mealLogs.forEach(log => {
-  if (!log.eaten) return;
+  if (diet?.meals && diet?.macros) {
+    mealLogs.forEach((log) => {
+      if (!log.eaten) return;
+      const mealItems = diet.meals[log.mealType] || [];
+      const proteinPerItem = Math.round((diet.macros.protein || 0) / 10);
+      const carbsPerItem = Math.round((diet.macros.carbs || 0) / 10);
+      const fatsPerItem = Math.round((diet.macros.fats || 0) / 10);
 
-  const mealItems = diet.meals[log.mealType] || [];
+      consumedProtein += proteinPerItem * mealItems.length;
+      consumedCarbs += carbsPerItem * mealItems.length;
+      consumedFats += fatsPerItem * mealItems.length;
+    });
+  }
 
-  // simple estimation per item (safe + explainable)
-  const caloriesPerItem = Math.round(diet.totalCalories / 10);
-  const proteinPerItem = Math.round(diet.macros.protein / 10);
-  const carbsPerItem = Math.round(diet.macros.carbs / 10);
-  const fatsPerItem = Math.round(diet.macros.fats / 10);
+  const totalMeals = diet?.meals ? Object.keys(diet.meals).length : 0;
+  const eatenMeals = mealLogs.filter((m) => m.eaten).length;
+  const compliance = totalMeals ? Math.round((eatenMeals / totalMeals) * 100) : 0;
 
-  consumedCalories += caloriesPerItem * mealItems.length;
-  consumedProtein += proteinPerItem * mealItems.length;
-  consumedCarbs += carbsPerItem * mealItems.length;
-  consumedFats += fatsPerItem * mealItems.length;
-});
-
-/* ---------- Compliance ---------- */
-const totalMeals = Object.keys(diet.meals).length;
-const eatenMeals = mealLogs.filter(m => m.eaten).length;
-
-const compliance = totalMeals
-  ? Math.round((eatenMeals / totalMeals) * 100)
-  : 0;
-
-  /* ---------- Empty State ---------- */
   if (!diet) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#fbfbf8]">
-        <button
-          onClick={generateDiet}
-          className="bg-green-600 text-white px-8 py-4 rounded-xl text-lg shadow-lg hover:bg-green-700"
-        >
-          Generate Diet Plan
-        </button>
+        <div className="text-center">
+          {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+          <button
+            onClick={generateDiet}
+            className="rounded-xl bg-green-600 px-8 py-4 text-lg text-white shadow-lg hover:bg-green-700"
+          >
+            {loading ? "Generating..." : "Generate Diet Plan"}
+          </button>
+        </div>
       </div>
     );
   }
 
-  /* =========================
-     UI STARTS HERE
-  ========================= */
   return (
     <div className="min-h-screen bg-[#fbfbf8]">
-      {/* ---------- Navbar ---------- */}
-      <header className="bg-white/80 backdrop-blur border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-green-700">
-            NutriPlan
-          </h1>
+      <header className="sticky top-0 z-10 border-b bg-white/80 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+          <h1 className="text-2xl font-bold text-green-700">NutriMind AI</h1>
           <div className="flex gap-4">
             <button
               onClick={() => navigate("/profile")}
-              className="text-gray-600 hover:text-green-700 font-semibold"
+              className="font-semibold text-gray-600 hover:text-green-700"
             >
               Profile
             </button>
             <button
               onClick={() => navigate("/weight")}
-              className="text-gray-600 hover:text-green-700 font-semibold"
+              className="font-semibold text-gray-600 hover:text-green-700"
             >
               Weight Progress
             </button>
@@ -154,77 +144,50 @@ const compliance = totalMeals
         </div>
       </header>
 
-      {/* ---------- Main Layout ---------- */}
-      <main className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* LEFT SIDE */}
-        <div className="lg:col-span-2 space-y-8">
-          {/* Calories Card */}
-          <div className="bg-[#f1f6ed] rounded-3xl p-8 shadow-sm">
+      <main className="mx-auto grid max-w-7xl grid-cols-1 gap-8 p-6 lg:grid-cols-3">
+        <div className="space-y-8 lg:col-span-2">
+          <div className="rounded-3xl bg-[#f1f6ed] p-8 shadow-sm">
             <p className="text-gray-600">Daily Target</p>
-            <h2 className="text-5xl font-bold text-green-700 mt-1">
-              {diet.totalCalories}
-            </h2>
+            <h2 className="mt-1 text-5xl font-bold text-green-700">{diet.totalCalories}</h2>
             <p className="text-gray-500">calories / day</p>
 
-            <div className="flex gap-8 mt-6 text-sm font-semibold">
-              <span className="text-purple-600">
-                Protein {diet.macros.protein}g
-              </span>
-              <span className="text-yellow-600">
-                Carbs {diet.macros.carbs}g
-              </span>
-              <span className="text-red-600">
-                Fats {diet.macros.fats}g
-              </span>
+            <div className="mt-6 flex gap-8 text-sm font-semibold">
+              <span className="text-purple-600">Protein {diet.macros?.protein || 0}g</span>
+              <span className="text-yellow-600">Carbs {diet.macros?.carbs || 0}g</span>
+              <span className="text-red-600">Fats {diet.macros?.fats || 0}g</span>
             </div>
           </div>
 
-          {/* Meals */}
           <div>
-            <h2 className="text-xl font-bold mb-4">
-              Today’s Meals
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {Object.keys(diet.meals).map(meal => {
+            <h2 className="mb-4 text-xl font-bold">Today’s Meals</h2>
+            {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              {Object.keys(diet.meals || {}).map((meal) => {
                 const status = getMealStatus(meal);
-
                 return (
-                  <div
-                    key={meal}
-                    className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition"
-                  >
-                    <h3 className="text-lg font-semibold capitalize mb-3 text-green-700">
-                      {meal}
-                    </h3>
-
-                    <ul className="text-sm text-gray-600 list-disc list-inside mb-4">
-                      {diet.meals[meal].map((item, i) => (
+                  <div key={meal} className="rounded-2xl bg-white p-6 shadow-sm transition hover:shadow-md">
+                    <h3 className="mb-3 text-lg font-semibold capitalize text-green-700">{meal}</h3>
+                    <ul className="mb-4 list-inside list-disc text-sm text-gray-600">
+                      {(diet.meals[meal] || []).map((item, i) => (
                         <li key={i}>{item}</li>
                       ))}
                     </ul>
-
                     <div className="flex gap-3">
                       <button
                         onClick={() => toggleMeal(meal, true)}
-                        className={`px-4 py-1 rounded-full text-sm font-semibold ${
-                          status === true
-                            ? "bg-green-600 text-white"
-                            : "bg-gray-100 hover:bg-green-100"
+                        className={`rounded-full px-4 py-1 text-sm font-semibold ${
+                          status === true ? "bg-green-600 text-white" : "bg-gray-100 hover:bg-green-100"
                         }`}
                       >
-                        ✓ Eaten
+                        Eaten
                       </button>
-
                       <button
                         onClick={() => toggleMeal(meal, false)}
-                        className={`px-4 py-1 rounded-full text-sm font-semibold ${
-                          status === false
-                            ? "bg-red-600 text-white"
-                            : "bg-gray-100 hover:bg-red-100"
+                        className={`rounded-full px-4 py-1 text-sm font-semibold ${
+                          status === false ? "bg-red-600 text-white" : "bg-gray-100 hover:bg-red-100"
                         }`}
                       >
-                        ✕ Skipped
+                        Skipped
                       </button>
                     </div>
                   </div>
@@ -234,56 +197,28 @@ const compliance = totalMeals
           </div>
         </div>
 
-        {/* RIGHT SIDE */}
         <div className="space-y-8">
-          {/* Macro Rings */}
-          <div className="bg-white rounded-3xl p-6 shadow-sm">
-            <h2 className="font-bold mb-6 text-lg">
-              Macro Split
-            </h2>
+          <div className="rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="mb-6 text-lg font-bold">Macro Split</h2>
             <div className="flex justify-between">
-              <Ring
-                value={consumedProtein * 4}
-                total={diet.totalCalories}
-                label="Protein"
-                color="#7c3aed"
-              />
-              <Ring
-                value={consumedCarbs * 4}
-                total={diet.totalCalories}
-                label="Carbs"
-                color="#f59e0b"
-              />
-              <Ring
-                value={consumedFats * 9}
-                total={diet.totalCalories}
-                label="Fats"
-                color="#ef4444"
-              />
+              <Ring value={consumedProtein * 4} total={diet.totalCalories} label="Protein" color="#7c3aed" />
+              <Ring value={consumedCarbs * 4} total={diet.totalCalories} label="Carbs" color="#f59e0b" />
+              <Ring value={consumedFats * 9} total={diet.totalCalories} label="Fats" color="#ef4444" />
             </div>
           </div>
 
-          {/* Compliance */}
-          <div className="bg-white rounded-3xl p-6 shadow-sm">
-            <h2 className="font-bold mb-3">
-              Today’s Compliance
-            </h2>
-            <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-green-600 transition-all"
-                style={{ width: `${compliance}%` }}
-              />
+          <div className="rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="mb-3 font-bold">Today’s Compliance</h2>
+            <div className="h-3 w-full overflow-hidden rounded-full bg-gray-200">
+              <div className="h-full bg-green-600 transition-all" style={{ width: `${compliance}%` }} />
             </div>
-            <p className="mt-2 font-semibold text-gray-700">
-              {compliance}% followed
-            </p>
+            <p className="mt-2 font-semibold text-gray-700">{compliance}% followed</p>
           </div>
 
-          {/* Regenerate */}
-          <div className="bg-white rounded-3xl p-6 shadow-sm">
+          <div className="rounded-3xl bg-white p-6 shadow-sm">
             <button
               onClick={generateDiet}
-              className="w-full bg-green-600 text-white py-3 rounded-xl text-lg hover:bg-green-700"
+              className="w-full rounded-xl bg-green-600 py-3 text-lg text-white hover:bg-green-700"
             >
               {loading ? "Generating..." : "New Plan"}
             </button>

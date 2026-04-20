@@ -1,3 +1,8 @@
 node_modules
 .env
 dist
+.mongodb-data/
+FINAL_YEAR_PROJECT_REPORT_60_PAGES.html
+FINAL_YEAR_PROJECT_REPORT_60_PAGES_PRINT.pdf
+FINAL_YEAR_PROJECT_REPORT_60_PAGES.pdf
+report-print.css

@@ -10,7 +10,7 @@ export default function Welcome() {
           🌿
         </div>
         <h1 className="text-4xl font-serif font-bold text-gray-900">
-          NutriPlan
+          NutriMind AI
         </h1>
         <p className="text-gray-600 mt-2 text-center max-w-md">
           Your personalized AI-powered diet planner with budget-friendly Indian meals.

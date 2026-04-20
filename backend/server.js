@@ -1,15 +1,18 @@
-import cors from "cors";
 import dotenv from "dotenv";
-dotenv.config(); // 👈 THIS WAS MISSING (MAIN ISSUE)
-
 import app from "./src/app.js";
 import connectDB from "./src/utils/db.js";
 
-const PORT = process.env.PORT || 4000;
-app.use("/api/auth", authRoutes);
+dotenv.config();
 
-connectDB();
+const PORT = process.env.PORT || 5001;
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
-});
+connectDB()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("Startup failed:", err.message);
+    process.exit(1);
+  });
