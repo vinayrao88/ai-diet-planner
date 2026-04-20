@@ -7,13 +7,24 @@ import mealLogRoutes from "./routes/mealLogRoutes.js";
 import progressRoutes from "./routes/progressRoutes.js";
 
 const app = express();
+const envOrigins = (process.env.CLIENT_URLS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://ainutriplanner.netlify.app",
+  ...envOrigins,
+];
 
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "https://ainutriplanner.netlify.app",
-    ],
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Not allowed by CORS"));
+    },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
