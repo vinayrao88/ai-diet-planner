@@ -1,25 +1,50 @@
 import bcrypt from "bcryptjs";
+import mongoose from "mongoose";
 import User from "../models/User.js";
 import { generateToken } from "../utils/jwt.js";
 
 export const register = async (req, res) => {
   try {
     const { name, email, password } = req.body || {};
+    const normalizedEmail = String(email || "").trim().toLowerCase();
 
-    if (!name || !email || !password) {
+    if (!name || !normalizedEmail || !password) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    const exists = await User.findOne({ email });
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        message: "Database not connected yet. Please try again in a few seconds.",
+      });
+    }
+
+    const exists = await User.findOne({ email: normalizedEmail });
     if (exists) {
       return res.status(400).json({ message: "User already exists" });
     }
 
     const hashed = await bcrypt.hash(password, 10);
-    await User.create({ name, email, password: hashed });
+    await User.create({ name, email: normalizedEmail, password: hashed });
 
     return res.status(201).json({ message: "Registered successfully" });
   } catch (error) {
+    console.error("Register error:", error?.message || error);
+
+    if (error?.code === 11000) {
+      return res.status(400).json({ message: "User already exists" });
+    }
+
+    const dbAuthError =
+      /bad auth|authentication failed|timed out|server selection/i.test(
+        String(error?.message || "")
+      ) || error?.name === "MongooseServerSelectionError";
+
+    if (dbAuthError) {
+      return res.status(503).json({
+        message: "Database connection issue. Please try again shortly.",
+      });
+    }
+
     return res.status(500).json({ message: "Registration failed" });
   }
 };
@@ -27,12 +52,19 @@ export const register = async (req, res) => {
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body || {};
+    const normalizedEmail = String(email || "").trim().toLowerCase();
 
-    if (!email || !password) {
+    if (!normalizedEmail || !password) {
       return res.status(400).json({ message: "Email and password are required" });
     }
 
-    const user = await User.findOne({ email });
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        message: "Database not connected yet. Please try again in a few seconds.",
+      });
+    }
+
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
@@ -49,6 +81,7 @@ export const login = async (req, res) => {
       user: { id: user._id, name: user.name, email: user.email },
     });
   } catch (error) {
+    console.error("Login error:", error?.message || error);
     return res.status(500).json({ message: "Login failed" });
   }
 };
