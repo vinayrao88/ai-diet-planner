@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import mongoose from "mongoose";
 import authRoutes from "./routes/authRoutes.js";
 import dietRoutes from "./routes/dietRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
@@ -43,7 +44,12 @@ app.get("/", (req, res) => {
 });
 
 app.get("/api/health", (req, res) => {
-  res.json({ ok: true });
+  const dbConnected = mongoose.connection.readyState === 1;
+  res.json({
+    ok: true,
+    dbConnected,
+    envHasMongoUri: Boolean(process.env.MONGO_URI || process.env.MONGODB_URI),
+  });
 });
 
 export default app;
