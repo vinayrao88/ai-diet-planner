@@ -2,145 +2,127 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 
-const MEAL_TYPES = ["breakfast", "lunch", "snacks", "dinner"];
-
 function Ring({ value, total, label, color }) {
-  const percent = total > 0 ? Math.min(100, Math.round((value / total) * 100)) : 0;
-  const r = 38;
+  const percent = total ? Math.round((value / total) * 100) : 0;
+  const r = 42;
   const stroke = 8;
-  const circumference = 2 * Math.PI * r;
-  const offset = circumference - (percent / 100) * circumference;
+  const c = 2 * Math.PI * r;
+  const offset = c - (percent / 100) * c;
 
   return (
     <div className="flex flex-col items-center">
-      <svg width="96" height="96" className="-rotate-90">
-        <circle cx="48" cy="48" r={r} stroke="#e5e7eb" strokeWidth={stroke} fill="none" />
+      <svg width="110" height="110">
+        <circle cx="55" cy="55" r={r} stroke="#e5e7eb" strokeWidth={stroke} fill="none" />
         <circle
-          cx="48"
-          cy="48"
+          cx="55"
+          cy="55"
           r={r}
           stroke={color}
           strokeWidth={stroke}
           fill="none"
-          strokeDasharray={circumference}
+          strokeDasharray={c}
           strokeDashoffset={offset}
           strokeLinecap="round"
         />
       </svg>
-      <p className="mt-1 text-lg font-bold text-slate-900">{percent}%</p>
-      <p className="text-xs text-slate-500">{label}</p>
+      <p className="mt-1 text-lg font-bold">{percent}%</p>
+      <p className="text-sm text-gray-500">{label}</p>
     </div>
   );
 }
 
-const emptyTotals = { calories: 0, protein: 0, carbs: 0, fats: 0 };
+const normalizeMealItems = (items = []) =>
+  items.map((item) => (typeof item === "string" ? { name: item } : item));
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [profile, setProfile] = useState(null);
   const [diet, setDiet] = useState(null);
   const [mealLogs, setMealLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [regenerating, setRegenerating] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [profileMeta, setProfileMeta] = useState(null);
 
-  const loadDashboard = async ({ forceRegenerate = false } = {}) => {
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const profileRes = await api.get("/users/me");
+        setProfileMeta(profileRes.data || null);
+        if (!profileRes.data?.profileComplete) {
+          navigate("/profile");
+          return;
+        }
+
+        const [dietRes, mealsRes] = await Promise.all([
+          api.get("/diet/current"),
+          api.get("/meals/today"),
+        ]);
+        setDiet(dietRes.data || null);
+        setMealLogs(mealsRes.data || []);
+      } catch (err) {
+        setError(err.response?.data?.message || "Failed to load dashboard data");
+      }
+    };
+
+    loadData();
+  }, [navigate]);
+
+  const generateDiet = async () => {
     try {
+      setLoading(true);
       setError("");
-      if (forceRegenerate) setRegenerating(true);
-      else setLoading(true);
-
-      const profileRes = await api.get("/users/me");
-      const user = profileRes.data;
-      setProfile(user);
-
-      if (!user?.profileComplete) {
-        navigate("/profile", { replace: true });
-        return;
-      }
-
-      if (forceRegenerate) {
-        await api.post("/diet/generate?force=true");
-      }
-
-      const [dietRes, mealsRes] = await Promise.all([
-        api.get("/diet/current"),
-        api.get("/meals/today"),
-      ]);
-
-      setDiet(dietRes.data || null);
-      setMealLogs(Array.isArray(mealsRes.data) ? mealsRes.data : []);
+      await api.post("/diet/generate?force=true");
+      const res = await api.get("/diet/current");
+      setDiet(res.data || null);
     } catch (err) {
-      setError(err?.response?.data?.message || "Failed to load dashboard");
+      setError(err.response?.data?.message || "Failed to generate diet plan");
     } finally {
       setLoading(false);
-      setRegenerating(false);
     }
   };
 
-  useEffect(() => {
-    loadDashboard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const getMealStatus = (meal) => mealLogs.find((m) => m.mealType === meal)?.eaten;
 
-  const getMealStatus = (mealType) => mealLogs.find((m) => m.mealType === mealType)?.eaten;
-
-  const toggleMeal = async (mealType, eaten) => {
+  const toggleMeal = async (meal, eaten) => {
     setMealLogs((prev) => {
-      const withoutCurrent = prev.filter((m) => m.mealType !== mealType);
-      return [...withoutCurrent, { mealType, eaten }];
+      const filtered = prev.filter((m) => m.mealType !== meal);
+      return [...filtered, { mealType: meal, eaten }];
     });
 
     try {
-      await api.post("/meals/toggle", { mealType, eaten });
+      await api.post("/meals/toggle", { mealType: meal, eaten });
     } catch (err) {
-      setError(err?.response?.data?.message || "Failed to update meal status");
+      setError(err.response?.data?.message || "Failed to update meal status");
     }
   };
 
-  const mealNutrition = diet?.mealNutrition || {};
-  const consumedTotals = mealLogs.reduce((acc, log) => {
-    if (!log?.eaten) return acc;
-    const meal = mealNutrition[log.mealType] || emptyTotals;
-    return {
-      calories: acc.calories + (meal.calories || 0),
-      protein: acc.protein + (meal.protein || 0),
-      carbs: acc.carbs + (meal.carbs || 0),
-      fats: acc.fats + (meal.fats || 0),
-    };
-  }, emptyTotals);
+  const consumed = mealLogs.reduce(
+    (acc, log) => {
+      if (!log.eaten) return acc;
+      const mealData = diet?.mealNutrition?.[log.mealType];
+      if (!mealData) return acc;
+      return {
+        protein: acc.protein + (mealData.protein || 0),
+        carbs: acc.carbs + (mealData.carbs || 0),
+        fats: acc.fats + (mealData.fats || 0),
+      };
+    },
+    { protein: 0, carbs: 0, fats: 0 }
+  );
 
-  const eatenCount = mealLogs.filter((m) => m?.eaten).length;
-  const compliance = Math.round((eatenCount / MEAL_TYPES.length) * 100) || 0;
-
-  if (loading) {
-    return (
-      <div className="min-h-screen grid place-items-center bg-[#f6faf6]">
-        <div className="rounded-xl bg-white px-5 py-3 text-sm text-slate-600 shadow-sm">
-          Loading your personalized dashboard...
-        </div>
-      </div>
-    );
-  }
+  const totalMeals = diet?.meals ? Object.keys(diet.meals).length : 0;
+  const eatenMeals = mealLogs.filter((m) => m.eaten).length;
+  const compliance = totalMeals ? Math.round((eatenMeals / totalMeals) * 100) : 0;
 
   if (!diet) {
     return (
-      <div className="min-h-screen grid place-items-center bg-[#f6faf6] p-4">
-        <div className="w-full max-w-md rounded-2xl border border-slate-100 bg-white p-6 text-center shadow-lg">
-          <h2 className="text-xl font-bold text-slate-800">No diet plan found</h2>
-          <p className="mt-2 text-sm text-slate-500">
-            Generate your first personalized plan from profile data.
-          </p>
-          {error ? (
-            <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
-              {error}
-            </p>
-          ) : null}
+      <div className="min-h-screen flex items-center justify-center bg-[#fbfbf8]">
+        <div className="text-center">
+          {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
           <button
-            onClick={() => loadDashboard({ forceRegenerate: true })}
-            className="mt-5 rounded-lg bg-green-600 px-6 py-2.5 font-semibold text-white hover:bg-green-700"
+            onClick={generateDiet}
+            className="rounded-xl bg-green-600 px-8 py-4 text-lg text-white shadow-lg hover:bg-green-700"
           >
-            Generate Plan
+            {loading ? "Generating..." : "Generate Diet Plan"}
           </button>
         </div>
       </div>
@@ -148,152 +130,72 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#f7fbf7] to-[#eef3ef]">
-      <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-4">
-          <div>
-            <h1 className="text-2xl font-bold text-green-700">NutriMind AI</h1>
-            <p className="text-xs text-slate-500">Dynamic AI Diet Dashboard</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+    <div className="min-h-screen bg-[#fbfbf8]">
+      <header className="sticky top-0 z-10 border-b bg-white/80 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+          <h1 className="text-2xl font-bold text-green-700">NutriMind AI</h1>
+          <div className="flex gap-4">
             <button
               onClick={() => navigate("/profile")}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              className="font-semibold text-gray-600 hover:text-green-700"
             >
-              Edit Profile
+              Profile
             </button>
             <button
               onClick={() => navigate("/weight")}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              className="font-semibold text-gray-600 hover:text-green-700"
             >
               Weight Progress
-            </button>
-            <button
-              onClick={() => {
-                localStorage.removeItem("token");
-                navigate("/login");
-              }}
-              className="rounded-lg border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
-            >
-              Logout
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl space-y-7 px-6 py-6">
-        {error ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-            {error}
-          </div>
-        ) : null}
+      <main className="mx-auto grid max-w-7xl grid-cols-1 gap-8 p-6 lg:grid-cols-3">
+        <div className="space-y-8 lg:col-span-2">
+          <div className="rounded-3xl bg-[#f1f6ed] p-8 shadow-sm">
+            <p className="text-gray-600">Daily Target</p>
+            <h2 className="mt-1 text-5xl font-bold text-green-700">{diet.totalCalories}</h2>
+            <p className="text-gray-500">calories / day</p>
 
-        <section className="grid gap-6 lg:grid-cols-3">
-          <div className="rounded-3xl bg-gradient-to-br from-green-700 via-green-600 to-emerald-500 p-6 text-white shadow-lg lg:col-span-2">
-            <p className="text-sm text-green-100">Target Calories</p>
-            <h2 className="mt-1 text-5xl font-bold">{diet.totalCalories}</h2>
-            <p className="text-sm text-green-100">kcal / day</p>
-
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <Metric label="Protein Target" value={`${diet.macros?.protein || 0} g`} />
-              <Metric label="Carbs Target" value={`${diet.macros?.carbs || 0} g`} />
-              <Metric label="Fats Target" value={`${diet.macros?.fats || 0} g`} />
+            <div className="mt-6 flex flex-wrap gap-8 text-sm font-semibold">
+              <span className="text-purple-600">Protein {diet.macros?.protein || 0}g</span>
+              <span className="text-yellow-600">Carbs {diet.macros?.carbs || 0}g</span>
+              <span className="text-red-600">Fats {diet.macros?.fats || 0}g</span>
+              <span className="text-blue-600">BMI {diet.bmi || profileMeta?.bmi || "N/A"}</span>
             </div>
           </div>
 
-          <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-bold text-slate-800">Health Snapshot</h3>
-            <div className="mt-4 space-y-2 text-sm text-slate-600">
-              <p>
-                <span className="font-semibold text-slate-800">BMI:</span>{" "}
-                {diet.bmi || profile?.bmi || "N/A"}{" "}
-                <span className="text-xs text-slate-500">
-                  ({diet.bmiCategory || "Not available"})
-                </span>
-              </p>
-              <p>
-                <span className="font-semibold text-slate-800">BMR:</span> {diet.bmr || "N/A"} kcal
-              </p>
-              <p>
-                <span className="font-semibold text-slate-800">Maintenance:</span>{" "}
-                {diet.maintenanceCalories || profile?.maintenanceCalories || "N/A"} kcal
-              </p>
-              <p>
-                <span className="font-semibold text-slate-800">Goal:</span> {diet.goal || "maintain"}
-              </p>
-              <p>
-                <span className="font-semibold text-slate-800">Preference:</span>{" "}
-                {diet.dietPreference || profile?.dietPreference || "veg"}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-6 lg:grid-cols-3">
-          <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm lg:col-span-2">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-slate-800">Today&apos;s Meal Plan</h3>
-              <button
-                onClick={() => loadDashboard({ forceRegenerate: true })}
-                disabled={regenerating}
-                className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
-              >
-                {regenerating ? "Regenerating..." : "Regenerate Plan"}
-              </button>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              {MEAL_TYPES.map((mealType) => {
-                const status = getMealStatus(mealType);
-                const mealItems = Array.isArray(diet?.meals?.[mealType])
-                  ? diet.meals[mealType]
-                  : [];
-                const nutrition = mealNutrition[mealType] || emptyTotals;
-
+          <div>
+            <h2 className="mb-4 text-xl font-bold">Today’s Meals</h2>
+            {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              {Object.keys(diet.meals || {}).map((meal) => {
+                const status = getMealStatus(meal);
                 return (
                   <div
-                    key={mealType}
-                    className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4"
+                    key={meal}
+                    className="rounded-2xl bg-white p-6 shadow-sm transition hover:shadow-md"
                   >
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-lg font-semibold capitalize text-green-700">{mealType}</h4>
-                      <span className="text-xs text-slate-500">{nutrition.calories || 0} kcal</span>
-                    </div>
-
-                    <ul className="mt-3 space-y-1 text-sm text-slate-700">
-                      {mealItems.length ? (
-                        mealItems.map((item, idx) => {
-                          const name = typeof item === "string" ? item : item?.name;
-                          const calories = typeof item === "string" ? null : item?.calories;
-                          return (
-                            <li key={`${name}-${idx}`} className="flex justify-between gap-3">
-                              <span>{name}</span>
-                              {calories ? <span className="text-slate-500">{calories} kcal</span> : null}
-                            </li>
-                          );
-                        })
-                      ) : (
-                        <li className="text-slate-400">No items available</li>
-                      )}
+                    <h3 className="mb-3 text-lg font-semibold capitalize text-green-700">{meal}</h3>
+                    <ul className="mb-4 list-inside list-disc text-sm text-gray-600">
+                      {normalizeMealItems(diet.meals[meal] || []).map((item, i) => (
+                        <li key={`${item.name}-${i}`}>{item.name}</li>
+                      ))}
                     </ul>
-
-                    <div className="mt-4 flex gap-2">
+                    <div className="flex gap-3">
                       <button
-                        onClick={() => toggleMeal(mealType, true)}
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          status === true
-                            ? "bg-green-600 text-white"
-                            : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-green-50"
+                        onClick={() => toggleMeal(meal, true)}
+                        className={`rounded-full px-4 py-1 text-sm font-semibold ${
+                          status === true ? "bg-green-600 text-white" : "bg-gray-100 hover:bg-green-100"
                         }`}
                       >
                         Eaten
                       </button>
                       <button
-                        onClick={() => toggleMeal(mealType, false)}
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          status === false
-                            ? "bg-rose-600 text-white"
-                            : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-rose-50"
+                        onClick={() => toggleMeal(meal, false)}
+                        className={`rounded-full px-4 py-1 text-sm font-semibold ${
+                          status === false ? "bg-red-600 text-white" : "bg-gray-100 hover:bg-red-100"
                         }`}
                       >
                         Skipped
@@ -304,54 +206,51 @@ export default function Dashboard() {
               })}
             </div>
           </div>
+        </div>
 
-          <div className="space-y-6">
-            <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-              <h3 className="text-lg font-bold text-slate-800">Macro Progress</h3>
-              <div className="mt-5 flex justify-between">
-                <Ring
-                  value={consumedTotals.protein}
-                  total={diet.plannedMacros?.protein || diet.macros?.protein || 1}
-                  label="Protein"
-                  color="#7c3aed"
-                />
-                <Ring
-                  value={consumedTotals.carbs}
-                  total={diet.plannedMacros?.carbs || diet.macros?.carbs || 1}
-                  label="Carbs"
-                  color="#f59e0b"
-                />
-                <Ring
-                  value={consumedTotals.fats}
-                  total={diet.plannedMacros?.fats || diet.macros?.fats || 1}
-                  label="Fats"
-                  color="#ef4444"
-                />
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-              <h3 className="text-lg font-bold text-slate-800">Today&apos;s Compliance</h3>
-              <div className="mt-4 h-3 w-full overflow-hidden rounded-full bg-slate-200">
-                <div className="h-full bg-green-600 transition-all" style={{ width: `${compliance}%` }} />
-              </div>
-              <p className="mt-2 text-sm font-semibold text-slate-700">{compliance}% followed</p>
-              <p className="mt-1 text-xs text-slate-500">
-                Consumed: {Math.round(consumedTotals.calories)} / {diet.totalCalories} kcal
-              </p>
+        <div className="space-y-8">
+          <div className="rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="mb-6 text-lg font-bold">Macro Split</h2>
+            <div className="flex justify-between">
+              <Ring
+                value={consumed.protein}
+                total={diet.macros?.protein || 0}
+                label="Protein"
+                color="#7c3aed"
+              />
+              <Ring
+                value={consumed.carbs}
+                total={diet.macros?.carbs || 0}
+                label="Carbs"
+                color="#f59e0b"
+              />
+              <Ring
+                value={consumed.fats}
+                total={diet.macros?.fats || 0}
+                label="Fats"
+                color="#ef4444"
+              />
             </div>
           </div>
-        </section>
-      </main>
-    </div>
-  );
-}
 
-function Metric({ label, value }) {
-  return (
-    <div className="rounded-xl bg-white/15 px-3 py-2 text-sm backdrop-blur-sm">
-      <p className="text-green-100">{label}</p>
-      <p className="font-semibold text-white">{value}</p>
+          <div className="rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="mb-3 font-bold">Today’s Compliance</h2>
+            <div className="h-3 w-full overflow-hidden rounded-full bg-gray-200">
+              <div className="h-full bg-green-600 transition-all" style={{ width: `${compliance}%` }} />
+            </div>
+            <p className="mt-2 font-semibold text-gray-700">{compliance}% followed</p>
+          </div>
+
+          <div className="rounded-3xl bg-white p-6 shadow-sm">
+            <button
+              onClick={generateDiet}
+              className="w-full rounded-xl bg-green-600 py-3 text-lg text-white hover:bg-green-700"
+            >
+              {loading ? "Generating..." : "Regenerate Plan"}
+            </button>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

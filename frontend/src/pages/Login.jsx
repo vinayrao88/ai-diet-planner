@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import axios from "../services/api";
 import { useNavigate, Link } from "react-router-dom";
 
@@ -6,36 +6,19 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const navigate = useNavigate();
-
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    axios
-      .get("/users/me")
-      .then((res) => {
-        if (res.data?.profileComplete) navigate("/dashboard", { replace: true });
-        else navigate("/profile", { replace: true });
-      })
-      .catch(() => {
-        localStorage.removeItem("token");
-      });
-  }, [navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
       setLoading(true);
-      setError("");
       const res = await axios.post("/auth/login", { email, password });
       localStorage.setItem("token", res.data.token);
 
       const profileComplete = Boolean(res.data?.user?.profileComplete);
       navigate(profileComplete ? "/dashboard" : "/profile");
     } catch (err) {
-      setError(err?.response?.data?.message || "Login failed");
+      alert(err?.response?.data?.message || "Login failed");
     } finally {
       setLoading(false);
     }
@@ -44,25 +27,15 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#fafaf7] px-4">
       <div className="bg-white rounded-2xl shadow-md w-full max-w-md p-8">
-        
-        {/* Header */}
         <div className="text-center mb-6">
           <div className="w-14 h-14 rounded-full bg-green-100 mx-auto flex items-center justify-center mb-2">
             🌿
           </div>
           <h2 className="text-2xl font-serif font-bold">Welcome Back</h2>
-          <p className="text-gray-600 text-sm">
-            Login to continue your health journey
-          </p>
+          <p className="text-gray-600 text-sm">Login to continue your health journey</p>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleLogin} className="space-y-4">
-          {error ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
-              {error}
-            </div>
-          ) : null}
           <div>
             <label className="text-sm font-medium">Email</label>
             <input
@@ -95,7 +68,6 @@ export default function Login() {
           </button>
         </form>
 
-        {/* Footer */}
         <p className="text-center text-sm text-gray-600 mt-6">
           Don’t have an account?{" "}
           <Link to="/register" className="text-green-600 font-medium">
