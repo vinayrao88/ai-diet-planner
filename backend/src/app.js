@@ -17,11 +17,25 @@ const allowedOrigins = [
   "https://ainutriplanner.netlify.app",
   ...envOrigins,
 ];
+const normalizeOrigin = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/\/+$/, "")
+    .toLowerCase();
+const normalizedAllowedOrigins = allowedOrigins.map(normalizeOrigin);
+const isTrustedPreviewOrigin = (origin) =>
+  origin.endsWith(".netlify.app") || origin.endsWith(".vercel.app");
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      const normalizedOrigin = normalizeOrigin(origin);
+
+      if (
+        !origin ||
+        normalizedAllowedOrigins.includes(normalizedOrigin) ||
+        isTrustedPreviewOrigin(normalizedOrigin)
+      ) {
         return callback(null, true);
       }
       return callback(new Error("Not allowed by CORS"));
