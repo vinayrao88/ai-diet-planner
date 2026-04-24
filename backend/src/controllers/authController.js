@@ -63,9 +63,14 @@ export const login = async (req, res) => {
         message: "Database not connected yet. Please try again in a few seconds.",
       });
     }
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({
+        message: "Server auth config missing (JWT_SECRET).",
+      });
+    }
 
     const user = await User.findOne({ email: normalizedEmail });
-    if (!user) {
+    if (!user || !user.password) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
@@ -82,6 +87,11 @@ export const login = async (req, res) => {
     });
   } catch (error) {
     console.error("Login error:", error?.message || error);
+    if (/secretorprivatekey|jwt/i.test(String(error?.message || ""))) {
+      return res.status(500).json({
+        message: "Server auth config missing (JWT_SECRET).",
+      });
+    }
     return res.status(500).json({ message: "Login failed" });
   }
 };

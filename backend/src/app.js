@@ -63,6 +63,7 @@ app.get("/api/health", (req, res) => {
     ok: true,
     dbConnected,
     envHasMongoUri: Boolean(process.env.MONGO_URI || process.env.MONGODB_URI),
+    envHasJwtSecret: Boolean(process.env.JWT_SECRET),
   });
 });
 
