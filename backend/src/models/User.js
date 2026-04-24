@@ -2,15 +2,18 @@ import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema(
   {
-    name: String,
-    email: { type: String, unique: true },
-    password: String,
+    name: { type: String, trim: true },
+    email: { type: String, unique: true, lowercase: true, trim: true },
+    password: { type: String, required: true },
 
     age: Number,
-    gender: String,
+    gender: { type: String, enum: ["male", "female"] },
     height: Number,
     weight: Number,
-    activityLevel: String,
+    activityLevel: {
+      type: String,
+      enum: ["sedentary", "light", "moderate", "active", "athlete"],
+    },
     goal: String,
     dietPreference: String,
     allergies: [String],

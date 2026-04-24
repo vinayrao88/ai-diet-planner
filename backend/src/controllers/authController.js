@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import User from "../models/User.js";
 import { generateToken } from "../utils/jwt.js";
+import { getProfileCompleteness } from "../services/dietEngineService.js";
 
 export const register = async (req, res) => {
   try {
@@ -24,9 +25,21 @@ export const register = async (req, res) => {
     }
 
     const hashed = await bcrypt.hash(password, 10);
-    await User.create({ name, email: normalizedEmail, password: hashed });
+    const user = await User.create({ name, email: normalizedEmail, password: hashed });
+    const token = generateToken({ id: user._id });
+    const profileMeta = getProfileCompleteness(user);
 
-    return res.status(201).json({ message: "Registered successfully" });
+    return res.status(201).json({
+      message: "Registered successfully",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        profileComplete: profileMeta.profileComplete,
+        missingFields: profileMeta.missingFields,
+      },
+    });
   } catch (error) {
     console.error("Register error:", error?.message || error);
 
@@ -80,10 +93,17 @@ export const login = async (req, res) => {
     }
 
     const token = generateToken({ id: user._id });
+    const profileMeta = getProfileCompleteness(user);
 
     return res.json({
       token,
-      user: { id: user._id, name: user.name, email: user.email },
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        profileComplete: profileMeta.profileComplete,
+        missingFields: profileMeta.missingFields,
+      },
     });
   } catch (error) {
     console.error("Login error:", error?.message || error);

@@ -1,7 +1,7 @@
 import DietPlan from "../models/DietPlan.js";
 import User from "../models/User.js";
-import { calculateBMR, activityMultiplier } from "../utils/bmr.js";
-import { generateDietPlan } from "../services/aiDietService.js";
+import mongoose from "mongoose";
+import { generateAndSaveDietForUser } from "../services/dietEngineService.js";
 
 /**
  * Generate a new diet plan for logged-in user
@@ -13,48 +13,21 @@ export const generateDiet = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
+    const forceRegenerate = String(req.query.force || "").toLowerCase() === "true";
 
-    // 🔥 SAFE DEFAULTS (important for demo & stability)
-    const safeUser = {
-      weight: user.weight || 70,
-      height: user.height || 170,
-      age: user.age || 22,
-      gender: user.gender || "male",
-      activityLevel: user.activityLevel || "moderate",
-      dietPreference: user.dietPreference || "vegetarian",
-      allergies: user.allergies || [],
-    };
-
-    // BMR + TDEE
-    const bmr = calculateBMR(safeUser);
-    const tdee = Math.round(bmr * activityMultiplier(safeUser.activityLevel));
-
-    // AI diet generation
-    const plan = generateDietPlan({
-      calories: tdee,
-      preference: safeUser.dietPreference,
-      allergies: safeUser.allergies,
+    const result = await generateAndSaveDietForUser({
+      user,
+      forceRegenerate,
     });
 
-    // Save diet plan
-    const today = new Date().toISOString().slice(0, 10);
-    const savedPlan = await DietPlan.findOneAndUpdate(
-    { user: user._id, date: today },
-  {
-    user: user._id,
-    date: today,
-    totalCalories: plan.totalCalories,
-    macros: plan.macros,
-    meals: plan.meals,
-  },
-  {
-    upsert: true,
-    returnDocument: "after",
-  }
-);
+    if (!result.profileComplete) {
+      return res.status(400).json({
+        message: "Please complete profile before generating diet plan",
+        missingFields: result.missingFields,
+      });
+    }
 
-
-    return res.json(savedPlan);
+    return res.json(result.plan);
   } catch (err) {
     console.error("Generate diet error:", err);
     return res.status(500).json({ message: "Diet generation failed" });
@@ -66,10 +39,11 @@ export const generateDiet = async (req, res) => {
  */
 export const currentDiet = async (req, res) => {
   try {
-    const plan = await DietPlan.findOne({ user: req.user.id })
-      .sort({ createdAt: -1 });
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    return res.json(plan);
+    const result = await generateAndSaveDietForUser({ user, forceRegenerate: false });
+    return res.json(result.plan);
   } catch (err) {
     console.error("Fetch diet error:", err);
     return res.status(500).json({ message: "Failed to fetch diet" });
@@ -77,8 +51,9 @@ export const currentDiet = async (req, res) => {
 };
 export const dietHistory = async (req, res) => {
   try {
+    const userObjectId = new mongoose.Types.ObjectId(req.user.id);
     const plans = await DietPlan.aggregate([
-      { $match: { user: req.user.id } },
+      { $match: { user: userObjectId } },
 
       // 🔥 createdAt se YYYY-MM-DD nikaalo
       {
@@ -97,6 +72,8 @@ export const dietHistory = async (req, res) => {
         $group: {
           _id: "$day",
           totalCalories: { $last: "$totalCalories" },
+          bmi: { $last: "$bmi" },
+          goal: { $last: "$goal" },
           createdAt: { $last: "$createdAt" },
         },
       },

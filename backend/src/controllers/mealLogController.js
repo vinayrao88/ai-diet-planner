@@ -4,9 +4,13 @@ export const toggleMeal = async (req, res) => {
   try {
     const { mealType, eaten } = req.body;
     const today = new Date().toISOString().slice(0, 10);
+    const allowedMealTypes = ["breakfast", "lunch", "snacks", "dinner"];
 
     if (!mealType || typeof eaten !== "boolean") {
       return res.status(400).json({ message: "mealType and eaten are required" });
+    }
+    if (!allowedMealTypes.includes(mealType)) {
+      return res.status(400).json({ message: "Invalid mealType" });
     }
 
     const log = await MealLog.findOneAndUpdate(

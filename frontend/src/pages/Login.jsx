@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "../services/api";
 import { useNavigate, Link } from "react-router-dom";
 
@@ -6,17 +6,36 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    axios
+      .get("/users/me")
+      .then((res) => {
+        if (res.data?.profileComplete) navigate("/dashboard", { replace: true });
+        else navigate("/profile", { replace: true });
+      })
+      .catch(() => {
+        localStorage.removeItem("token");
+      });
+  }, [navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
       setLoading(true);
+      setError("");
       const res = await axios.post("/auth/login", { email, password });
       localStorage.setItem("token", res.data.token);
-      navigate("/dashboard");
+
+      const profileComplete = Boolean(res.data?.user?.profileComplete);
+      navigate(profileComplete ? "/dashboard" : "/profile");
     } catch (err) {
-      alert(err?.response?.data?.message || "Login failed");
+      setError(err?.response?.data?.message || "Login failed");
     } finally {
       setLoading(false);
     }
@@ -39,6 +58,11 @@ export default function Login() {
 
         {/* Form */}
         <form onSubmit={handleLogin} className="space-y-4">
+          {error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+              {error}
+            </div>
+          ) : null}
           <div>
             <label className="text-sm font-medium">Email</label>
             <input

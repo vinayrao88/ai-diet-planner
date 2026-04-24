@@ -2,56 +2,52 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 
+const initialForm = {
+  age: "",
+  gender: "",
+  height: "",
+  weight: "",
+  activityLevel: "",
+  goal: "",
+  dietPreference: "",
+  allergies: "",
+};
+
 export default function Profile() {
   const navigate = useNavigate();
-  const [dark, setDark] = useState(localStorage.getItem("theme") === "dark");
-  const [form, setForm] = useState({
-    age: "",
-    gender: "",
-    height: "",
-    weight: "",
-    activityLevel: "",
-    goal: "",
-    dietPreference: "",
-    allergies: "",
-  });
+  const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(true);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (dark) {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-    }
-  }, [dark]);
 
   useEffect(() => {
     api
       .get("/users/me")
       .then((res) => {
-        if (!res.data) return;
+        const data = res.data || {};
         setForm({
-          age: res.data.age ?? "",
-          gender: res.data.gender ?? "",
-          height: res.data.height ?? "",
-          weight: res.data.weight ?? "",
-          activityLevel: res.data.activityLevel ?? "",
-          goal: res.data.goal ?? "",
-          dietPreference: res.data.dietPreference ?? "",
-          allergies: (res.data.allergies || []).join(", "),
+          age: data.age ?? "",
+          gender: data.gender ?? "",
+          height: data.height ?? "",
+          weight: data.weight ?? "",
+          activityLevel: data.activityLevel ?? "",
+          goal: data.goal ?? "",
+          dietPreference: data.dietPreference ?? "",
+          allergies: Array.isArray(data.allergies) ? data.allergies.join(", ") : "",
         });
       })
-      .catch(() => {
-        setError("Failed to load profile");
-      });
+      .catch((err) => {
+        setError(err?.response?.data?.message || "Failed to load profile");
+      })
+      .finally(() => setLoadingProfile(false));
   }, []);
 
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const onChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
 
-  const handleSubmit = async (e) => {
+  const onSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
@@ -71,109 +67,149 @@ export default function Profile() {
           .filter(Boolean),
       });
       navigate("/dashboard");
-    } catch {
-      setError("Failed to save profile");
+    } catch (err) {
+      setError(err?.response?.data?.message || "Failed to save profile");
     } finally {
       setLoading(false);
     }
   };
 
+  if (loadingProfile) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-[#f6faf6]">
+        <div className="rounded-xl bg-white px-5 py-3 text-sm text-slate-600 shadow-sm">
+          Loading your profile...
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4 transition dark:bg-gray-900">
-      <div className="w-full max-w-3xl rounded-2xl bg-white p-8 shadow-lg dark:bg-gray-800">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Profile Setup</h1>
-            <p className="text-gray-500 dark:text-gray-400">Personalize your AI diet plan</p>
-          </div>
-          <button onClick={() => setDark(!dark)} className="text-sm font-medium" type="button">
-            {dark ? "Light" : "Dark"}
-          </button>
+    <div className="min-h-screen bg-[#f6faf6] px-4 py-8">
+      <div className="mx-auto max-w-4xl overflow-hidden rounded-3xl bg-white shadow-xl ring-1 ring-slate-100">
+        <div className="bg-gradient-to-r from-green-700 to-emerald-500 px-6 py-5 text-white">
+          <p className="text-xs uppercase tracking-[0.2em] text-green-100">Onboarding</p>
+          <h1 className="text-2xl font-bold">Complete Your Nutrition Profile</h1>
+          <p className="mt-1 text-green-50">
+            We use this data to calculate BMI, calorie target, and personalized meals.
+          </p>
         </div>
 
-        {error && <p className="mb-4 text-sm text-red-500">{error}</p>}
+        <form onSubmit={onSubmit} className="space-y-7 p-6 md:p-8">
+          {error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+              {error}
+            </div>
+          ) : null}
 
-        <form onSubmit={handleSubmit} className="space-y-8">
-          <Section title="Basic Info">
-            <Input name="age" value={form.age} onChange={handleChange} placeholder="Age" type="number" />
+          <Section title="Body Metrics">
+            <Input
+              name="age"
+              type="number"
+              min={10}
+              max={90}
+              value={form.age}
+              onChange={onChange}
+              placeholder="Age"
+              required
+            />
             <Select
               name="gender"
               value={form.gender}
-              onChange={handleChange}
+              onChange={onChange}
               placeholder="Gender"
+              required
               options={[
                 { label: "Male", value: "male" },
                 { label: "Female", value: "female" },
               ]}
             />
-          </Section>
-
-          <Section title="Body Metrics">
             <Input
               name="height"
-              value={form.height}
-              onChange={handleChange}
-              placeholder="Height (cm)"
               type="number"
+              min={120}
+              max={230}
+              value={form.height}
+              onChange={onChange}
+              placeholder="Height (cm)"
+              required
             />
             <Input
               name="weight"
-              value={form.weight}
-              onChange={handleChange}
-              placeholder="Weight (kg)"
               type="number"
+              min={25}
+              max={250}
+              value={form.weight}
+              onChange={onChange}
+              placeholder="Weight (kg)"
+              required
             />
           </Section>
 
-          <Section title="Lifestyle & Goals">
+          <Section title="Lifestyle and Goal">
             <Select
               name="activityLevel"
               value={form.activityLevel}
-              onChange={handleChange}
+              onChange={onChange}
               placeholder="Activity Level"
+              required
               options={[
                 { label: "Sedentary", value: "sedentary" },
-                { label: "Moderate", value: "moderate" },
+                { label: "Lightly Active", value: "light" },
+                { label: "Moderately Active", value: "moderate" },
                 { label: "Active", value: "active" },
+                { label: "Athlete", value: "athlete" },
               ]}
             />
             <Select
               name="goal"
               value={form.goal}
-              onChange={handleChange}
+              onChange={onChange}
               placeholder="Goal"
+              required
               options={[
-                { label: "Weight Loss", value: "weight-loss" },
-                { label: "Weight Gain", value: "weight-gain" },
-                { label: "Maintenance", value: "maintenance" },
+                { label: "Fat Loss", value: "fat-loss" },
+                { label: "Maintain", value: "maintain" },
+                { label: "Weight / Muscle Gain", value: "gain" },
               ]}
             />
           </Section>
 
-          <Section title="Diet Preference">
+          <Section title="Food Preferences">
             <Select
               name="dietPreference"
               value={form.dietPreference}
-              onChange={handleChange}
-              placeholder="Diet Type"
+              onChange={onChange}
+              placeholder="Food Preference"
+              required
               options={[
-                { label: "Vegetarian", value: "vegetarian" },
-                { label: "Eggetarian", value: "eggetarian" },
-                { label: "Non-Vegetarian", value: "non-vegetarian" },
+                { label: "Vegetarian", value: "veg" },
+                { label: "Egg + Veg", value: "egg" },
+                { label: "Non-Veg", value: "nonveg" },
               ]}
             />
             <Input
               name="allergies"
               value={form.allergies}
-              onChange={handleChange}
-              placeholder="Allergies (comma separated)"
-              type="text"
+              onChange={onChange}
+              placeholder="Allergies (optional, comma separated)"
             />
           </Section>
 
-          <div className="flex justify-end">
-            <button className="rounded-xl bg-green-600 px-8 py-3 text-lg text-white hover:bg-green-700" type="submit">
-              {loading ? "Saving..." : "Save & Continue"}
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => navigate("/dashboard")}
+              className="rounded-lg border border-slate-300 px-5 py-2.5 font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="rounded-lg bg-green-600 px-6 py-2.5 font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              {loading ? "Saving & Generating..." : "Save and Continue"}
             </button>
           </div>
         </form>
@@ -185,8 +221,8 @@ export default function Profile() {
 function Section({ title, children }) {
   return (
     <section>
-      <h2 className="mb-4 text-lg font-semibold text-gray-700 dark:text-gray-200">{title}</h2>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{children}</div>
+      <h2 className="mb-3 text-lg font-semibold text-slate-800">{title}</h2>
+      <div className="grid gap-4 md:grid-cols-2">{children}</div>
     </section>
   );
 }
@@ -195,7 +231,7 @@ function Input(props) {
   return (
     <input
       {...props}
-      className="w-full rounded-xl border bg-white px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-green-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+      className="w-full rounded-lg border border-slate-200 px-4 py-2.5 outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-200"
     />
   );
 }
@@ -204,7 +240,7 @@ function Select({ options, placeholder, ...props }) {
   return (
     <select
       {...props}
-      className="w-full rounded-xl border bg-white px-4 py-3 text-gray-800 outline-none focus:ring-2 focus:ring-green-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+      className="w-full rounded-lg border border-slate-200 px-4 py-2.5 outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-200"
     >
       <option value="">{placeholder}</option>
       {options.map((option) => (

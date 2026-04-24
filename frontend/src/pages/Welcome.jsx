@@ -1,8 +1,28 @@
-import { Link } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import api from "../services/api";
 
 export default function Welcome() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    api
+      .get("/users/me")
+      .then((res) => {
+        navigate(res.data?.profileComplete ? "/dashboard" : "/profile", {
+          replace: true,
+        });
+      })
+      .catch(() => {
+        localStorage.removeItem("token");
+      });
+  }, [navigate]);
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#fafaf7] px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-[#f7faf7] to-[#eef3ee] px-4">
       
       {/* Logo */}
       <div className="mb-6 flex flex-col items-center">
@@ -54,7 +74,7 @@ export default function Welcome() {
         ].map((f, i) => (
           <div
             key={i}
-            className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition text-center"
+            className="bg-white/90 backdrop-blur rounded-xl p-6 shadow-sm hover:shadow-md transition text-center border border-slate-100"
           >
             <div className="text-3xl mb-3">{f.icon}</div>
             <h3 className="font-semibold text-lg">{f.title}</h3>
